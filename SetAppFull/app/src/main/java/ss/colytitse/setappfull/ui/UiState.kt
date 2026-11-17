@@ -35,7 +35,20 @@ data class AppRow(
     val scopeRequestPending: Boolean = false,
     val usesScopeDefault: Boolean = false,
 ) {
-    val enabled: Boolean get() = flags and RuleCodec.ENABLED != 0
-    val allowScreenshot: Boolean get() = flags and RuleCodec.ALLOW_SCREENSHOT != 0
-    val networkEnvironmentCompat: Boolean get() = flags and RuleCodec.COMPAT_NETWORK_ENVIRONMENT != 0
+    // Individual mode states.
+    val fullscreenEnable: Boolean
+        get() = flags and RuleCodec.ENABLED != 0
+
+    val dynamicStatusEnable: Boolean
+        get() = flags and RuleCodec.DYNAMIC_STATUS_BAR != 0
+
+    // Aggregate state for app list switches and filters.
+    val enabled: Boolean
+        get() = fullscreenEnable || dynamicStatusEnable
+
+    val allowScreenshot: Boolean
+        get() = flags and RuleCodec.ALLOW_SCREENSHOT != 0
+
+    val networkEnvironmentCompat: Boolean
+        get() = flags and RuleCodec.COMPAT_NETWORK_ENVIRONMENT != 0
 }

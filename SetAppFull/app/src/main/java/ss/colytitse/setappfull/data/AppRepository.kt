@@ -182,15 +182,35 @@ class AppRepository(private val app: Application) {
     }
 
     fun setOption(packageName: String, option: Int, enabled: Boolean) = enqueue {
-        require(option == RuleCodec.HIDE_STATUS || option == RuleCodec.HIDE_NAVIGATION ||
-            option == RuleCodec.ALLOW_CUTOUT || option == RuleCodec.ALLOW_SCREENSHOT ||
-            option == RuleCodec.COMPAT_NETWORK_ENVIRONMENT ||
-            option == RuleCodec.DISABLE_BILIBILI_OPTIMIZATION)
+        require(
+            option == RuleCodec.HIDE_STATUS ||
+                    option == RuleCodec.HIDE_NAVIGATION ||
+                    option == RuleCodec.ALLOW_CUTOUT ||
+                    option == RuleCodec.ALLOW_SCREENSHOT ||
+                    option == RuleCodec.COMPAT_NETWORK_ENVIRONMENT ||
+                    option == RuleCodec.DISABLE_BILIBILI_OPTIMIZATION ||
+                    option == RuleCodec.DYNAMIC_STATUS_BAR
+        )
+
         // Read inside the queue: different switches may be tapped before UI state catches up.
         val previous = currentFlags(packageName)
-        writeRule(packageName, if (enabled) previous or option else previous and option.inv(),
-            requestScope = enabled && (option == RuleCodec.ALLOW_SCREENSHOT ||
-                option == RuleCodec.COMPAT_NETWORK_ENVIRONMENT))
+
+        // Keep fullscreen and dynamic status bar modes mutually exclusive.
+        val updated = if (option == RuleCodec.DYNAMIC_STATUS_BAR) {
+            RuleCodec.withDynamicStatusBar(previous, enabled)
+        } else {
+            if (enabled) previous or option else previous and option.inv()
+        }
+
+        writeRule(
+            packageName,
+            updated,
+            requestScope = enabled && (
+                    option == RuleCodec.DYNAMIC_STATUS_BAR ||
+                            option == RuleCodec.ALLOW_SCREENSHOT ||
+                            option == RuleCodec.COMPAT_NETWORK_ENVIRONMENT
+                    )
+        )
     }
 
     private fun currentFlags(packageName: String): Int = RuleCodec.resolveDisplayRule(
@@ -393,6 +413,8 @@ class AppRepository(private val app: Application) {
                     pending == ScopeRequestPolicy.REQUESTED,
                 usesScopeDefault = !explicit && scope?.contains(row.packageName) == true,
                 syncMessage = when {
+                    flags and RuleCodec.DYNAMIC_STATUS_BAR != 0 ->
+                        "动态状态栏已开启"
                     dirty -> "已保存到本机，待连接框架同步"
                     explicit && flags and (RuleCodec.ENABLED or RuleCodec.ALLOW_SCREENSHOT or
                         RuleCodec.COMPAT_NETWORK_ENVIRONMENT) == 0 -> "全屏控制已关闭"
@@ -416,12 +438,19 @@ class AppRepository(private val app: Application) {
         mutableState.value = mutableState.value.copy(
             apps = all.filter { show || !it.isSystem },
             enabledCount = if (mutableState.value.appListAccess == AppListAccess.READY) {
-                all.count { it.flags and 1 != 0 }
+                all.count {
+                    it.flags and (
+                            RuleCodec.ENABLED or RuleCodec.DYNAMIC_STATUS_BAR
+                            ) != 0
+                }
             } else {
                 local.all.count { (key, value) ->
                     val packageName = key.removePrefix(PREFIX)
                     key.startsWith(PREFIX) && packageName !in excluded &&
-                        PACKAGE.matches(packageName) && value is Int && value and 1 != 0
+                            PACKAGE.matches(packageName) && value is Int &&
+                            value and (
+                            RuleCodec.ENABLED or RuleCodec.DYNAMIC_STATUS_BAR
+                            ) != 0
                 }
             },
             showSystem = show,

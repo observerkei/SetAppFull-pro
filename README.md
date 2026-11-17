@@ -4,9 +4,14 @@
 
 按应用设置**沉浸式全屏**的 Android 模块，独立控制状态栏、导航栏和挖孔区域。支持现代 LSPosed / libxposed API 101、102。
 
-**[下载正式版 APK](https://github.com/tianxing226/SetAppFull-pro/releases/latest)** · [Telegram 频道](https://t.me/tiaxcj) · [兼容说明](docs/VERIFICATION.md)
+[Telegram 频道](https://t.me/tiaxcj) · [兼容说明](docs/VERIFICATION.md)
 
 本项目是 [cokkeijigen/SetAppFull](https://github.com/cokkeijigen/SetAppFull) 的独立维护分支，不是原作者发布的版本。
+
+
+## 新增改动
+
+- **动态全屏**：向下滑动屏幕显示状态栏，向上滑动屏幕隐藏状态栏；弹出菜单不检测。
 
 ## 2.0.6 更新
 

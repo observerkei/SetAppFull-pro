@@ -4,9 +4,14 @@
 
 An Android module for **immersive fullscreen per app**, with separate controls for the status bar, navigation bar, and display cutout. Supports modern LSPosed / libxposed APIs 101 and 102.
 
-**[Download the release APK](https://github.com/tianxing226/SetAppFull-pro/releases/latest)** · [Telegram channel](https://t.me/tiaxcj) · [Compatibility notes](docs/VERIFICATION_EN.md)
+[Telegram channel](https://t.me/tiaxcj) · [Compatibility notes](docs/VERIFICATION_EN.md)
 
 This is an independently maintained fork of [cokkeijigen/SetAppFull](https://github.com/cokkeijigen/SetAppFull), not a release published by the original author.
+
+
+## What's New
+
+- **Dynamic Fullscreen**: Swipe down to show the status bar; swipe up to hide it. Popup menus are not detected.
 
 ## 2.0.6 update
 

@@ -32,6 +32,9 @@ import io.github.libxposed.api.XposedModule;
 import ss.colytitse.setappfull.BuildConfig;
 import ss.colytitse.setappfull.core.RuleCodec;
 import ss.colytitse.setappfull.core.NetworkEnvironmentCompatibility;
+import android.view.MotionEvent;
+import android.widget.PopupWindow;
+
 
 /** API 101 baseline; API 102 runs the same public API without opting into hot reload. */
 public final class FullscreenModule extends XposedModule {
@@ -52,6 +55,8 @@ public final class FullscreenModule extends XposedModule {
     private int errorCount;
     private volatile String targetPackageName;
     private BilibiliStoryViewport bilibiliViewport;
+    private final DynamicStatusBarController dynamicStatusBar =
+            new DynamicStatusBarController(this);
 
     @Override public void onModuleLoaded(ModuleLoadedParam param) {
         systemServer = param.isSystemServer();
@@ -245,21 +250,109 @@ public final class FullscreenModule extends XposedModule {
         installHook(Dialog.class, "show", new Class<?>[]{}, chain -> {
             Object result = chain.proceed();
             Dialog dialog = (Dialog) chain.getThisObject();
+
             if (!moduleMutation.get() && Looper.myLooper() == Looper.getMainLooper()) {
                 Window window = dialog.getWindow();
+
                 if (window != null && dialog.getContext() != null) {
                     trackWindow(window, dialog.getContext().getPackageName(), true);
+
+                    // Pause gesture detection while the dialog is visible.
+                    Activity owner =
+                            DynamicStatusBarController.findActivity(dialog.getContext());
+
+                    dynamicStatusBar.onPopupShown(owner, dialog);
                 }
             }
+
             return result;
         });
         installHook(Dialog.class, "dismiss", new Class<?>[]{}, chain -> {
             Dialog dialog = (Dialog) chain.getThisObject();
             Window window = dialog.getWindow();
+
             Object result = chain.proceed();
+
+            // Resume gesture detection after the dialog is dismissed.
+            dynamicStatusBar.onPopupDismissed(dialog);
+
             if (window != null) destroyWindow(window);
+
             return result;
         });
+        // Observe PopupWindow displayed at a parent view.
+        installHook(PopupWindow.class, "showAtLocation",
+                new Class<?>[]{View.class, int.class, int.class, int.class},
+                chain -> {
+                    Object result = chain.proceed();
+
+                    trackPopupWindow(
+                            (PopupWindow) chain.getThisObject(),
+                            (View) chain.getArg(0)
+                    );
+
+                    return result;
+                });
+
+// Observe PopupWindow displayed below an anchor view.
+        installHook(PopupWindow.class, "showAsDropDown",
+                new Class<?>[]{View.class},
+                chain -> {
+                    Object result = chain.proceed();
+
+                    trackPopupWindow(
+                            (PopupWindow) chain.getThisObject(),
+                            (View) chain.getArg(0)
+                    );
+
+                    return result;
+                });
+
+        installHook(PopupWindow.class, "showAsDropDown",
+                new Class<?>[]{View.class, int.class, int.class},
+                chain -> {
+                    Object result = chain.proceed();
+
+                    trackPopupWindow(
+                            (PopupWindow) chain.getThisObject(),
+                            (View) chain.getArg(0)
+                    );
+
+                    return result;
+                });
+
+        installHook(PopupWindow.class, "showAsDropDown",
+                new Class<?>[]{View.class, int.class, int.class, int.class},
+                chain -> {
+                    Object result = chain.proceed();
+
+                    trackPopupWindow(
+                            (PopupWindow) chain.getThisObject(),
+                            (View) chain.getArg(0)
+                    );
+
+                    return result;
+                });
+        // Observe touch events without consuming or modifying them.
+        installHook(Activity.class, "dispatchTouchEvent",
+                new Class<?>[]{MotionEvent.class}, chain -> {
+                    Activity activity = (Activity) chain.getThisObject();
+                    MotionEvent event = (MotionEvent) chain.getArg(0);
+
+                    dynamicStatusBar.onTouch(activity, event);
+
+                    return chain.proceed();
+                });
+        installHook(PopupWindow.class, "dismiss",
+                new Class<?>[]{},
+                chain -> {
+                    Object popup = chain.getThisObject();
+                    Object result = chain.proceed();
+
+                    dynamicStatusBar.onPopupDismissed(popup);
+
+                    return result;
+                });
     }
 
     private void installNetworkEnvironmentHooks() {
@@ -303,7 +396,11 @@ public final class FullscreenModule extends XposedModule {
             reportFailure("Configuration refresh failed; restoring controlled windows", failure);
         }
         onMain(() -> {
-            for (WindowSession session : new ArrayList<>(windows.values())) session.apply(true);
+            for (WindowSession session : new ArrayList<>(windows.values())) {
+                session.apply(true);
+            }
+
+            dynamicStatusBar.refresh();
             refreshBilibiliViewport();
         });
     }
@@ -324,9 +421,11 @@ public final class FullscreenModule extends XposedModule {
             session.bindActivity(activity);
         }
         session.apply(true);
+        dynamicStatusBar.onActivityResumed(activity);
     }
 
     private void destroy(Activity activity) {
+        dynamicStatusBar.onActivityDestroyed(activity);
         WindowSession session = windows.remove(activity.getWindow());
         if (session != null) session.detach();
     }
@@ -341,6 +440,19 @@ public final class FullscreenModule extends XposedModule {
             session.attach();
         }
         session.apply(true);
+    }
+
+    /**
+     * Tracks a PopupWindow to pause dynamic status bar gestures.
+     */
+    private void trackPopupWindow(PopupWindow popup, View anchor) {
+        if (popup == null || anchor == null) return;
+
+        Activity owner = DynamicStatusBarController.findActivity(
+                anchor.getContext()
+        );
+
+        dynamicStatusBar.onPopupShown(owner, popup);
     }
 
     /** Dialog and PopupWindow use a Window without an Activity callback. Track it lazily when a
@@ -491,7 +603,7 @@ public final class FullscreenModule extends XposedModule {
     }
 
     void reportBilibiliAdapter() {
-        log(Log.INFO, TAG, "Bilibili Story adapter registered (2.0.6)");
-        Log.i(TAG, "Bilibili Story adapter registered (2.0.6)");
+        log(Log.INFO, TAG, "Bilibili Story adapter registered (2.0.7)");
+        Log.i(TAG, "Bilibili Story adapter registered (2.0.7)");
     }
 }

@@ -21,9 +21,14 @@ public final class RuleCodec {
     public static final int COMPAT_NETWORK_ENVIRONMENT = 1 << 5;
     /** Explicit per-app opt-out for the Bilibili-only fullscreen correction. */
     public static final int DISABLE_BILIBILI_OPTIMIZATION = 1 << 6;
+
+    public static final int DYNAMIC_STATUS_BAR = 1 << 7;
+
     public static final int DEFAULT_ENABLED = ENABLED | HIDE_STATUS | HIDE_NAVIGATION | ALLOW_CUTOUT;
-    public static final int ALL_FLAGS = DEFAULT_ENABLED | ALLOW_SCREENSHOT | COMPAT_NETWORK_ENVIRONMENT
-            | DISABLE_BILIBILI_OPTIMIZATION;
+
+    public static final int ALL_FLAGS = DEFAULT_ENABLED | ALLOW_SCREENSHOT
+            | COMPAT_NETWORK_ENVIRONMENT | DISABLE_BILIBILI_OPTIMIZATION
+            | DYNAMIC_STATUS_BAR;
     private static final Pattern PACKAGE = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)+");
 
     private RuleCodec() {}
@@ -43,6 +48,19 @@ public final class RuleCodec {
 
     public static boolean isEnabled(int flags) {
         return (flags & ENABLED) != 0;
+    }
+
+    /**
+     * Enable Dynamic Status Bar. When enabled, the original fullscreen rule will be automatically disabled.
+     */
+    public static int withDynamicStatusBar(int flags, boolean enabled) {
+        int normalized = normalize(flags);
+
+        if (enabled) {
+            return (normalized & ~ENABLED) | DYNAMIC_STATUS_BAR;
+        }
+
+        return normalized & ~DYNAMIC_STATUS_BAR;
     }
 
     /** A default is allowed only for a package whose scope/injection was actually confirmed. */
@@ -76,14 +94,27 @@ public final class RuleCodec {
         return Collections.unmodifiableMap(rules);
     }
 
-    /** Disabling preserves selected options. Enabling a new, all-zero rule uses the default. */
+    /**
+     * Enable Original Fullscreen Rule. When enabled, Dynamic Status Bar will be automatically disabled.
+     */
     public static int withEnabled(int flags, boolean enabled) {
         int normalized = normalize(flags);
-        if (!enabled) return normalized & ~ENABLED;
+
+        // Disabling the aggregate switch clears both mutually exclusive modes.
+        if (!enabled) {
+            return normalized & ~(ENABLED | DYNAMIC_STATUS_BAR);
+        }
+
         int geometry = HIDE_STATUS | HIDE_NAVIGATION | ALLOW_CUTOUT;
-        boolean independentOptionsOnly = (normalized & (ENABLED | geometry)) == 0;
-        return independentOptionsOnly
-                ? normalized | DEFAULT_ENABLED : normalized | ENABLED;
+        boolean independentOptionsOnly =
+                (normalized & (ENABLED | geometry)) == 0;
+
+        int result = independentOptionsOnly
+                ? normalized | DEFAULT_ENABLED
+                : normalized | ENABLED;
+
+        // Enabling the aggregate switch selects fullscreen mode by default.
+        return result & ~DYNAMIC_STATUS_BAR;
     }
 
     /** Invalid values fail closed; never coerce strings or booleans into enabled rules. */

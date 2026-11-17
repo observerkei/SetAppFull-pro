@@ -197,7 +197,9 @@ fun SetAppFullApp(
             AlertDialog(
                 onDismissRequest = { resetDialog = false },
                 title = { Text("重置应用规则？") },
-                text = { Text("将关闭所有应用的全屏规则并恢复默认选项。重新启动受影响的应用后恢复原有显示；框架作用域不会被更改。") },
+                text = {
+                    Text("将关闭所有应用的规则并恢复默认选项。重新启动受影响的应用后恢复原有显示；框架作用域不会被更改。")
+                },
                 confirmButton = { TextButton(onClick = { resetDialog = false; onReset() }) { Text("重置规则") } },
                 dismissButton = { TextButton(onClick = { resetDialog = false }) { Text("取消") } },
             )
@@ -281,7 +283,7 @@ private fun HomePage(state: UiState, onSettings: () -> Unit, onJoinCommunity: ()
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("管理应用", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text("${state.enabledCount} 个应用已开启全屏规则", color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        Text("${state.enabledCount} 个应用已开启规则", color = MaterialTheme.colorScheme.onPrimaryContainer,
                             style = MaterialTheme.typography.bodyMedium)
                     }
                     Icon(AppIcons.Arrow, "管理应用规则", tint = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -527,10 +529,33 @@ private fun RulesDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(app.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                RuleRow("开启全屏规则", "此应用独立生效", app.enabled) { onToggle(app.packageName, it) }
+                RuleRow(
+                    "开启全屏规则",
+                    "此应用独立生效",
+                    app.fullscreenEnable,
+                    !app.dynamicStatusEnable
+                ) {
+                    onToggle(app.packageName, it)
+                }
+
+                RuleRow(
+                    "动态状态栏",
+                    "上滑隐藏状态栏，下滑显示状态栏",
+                    app.dynamicStatusEnable,
+                    !app.fullscreenEnable
+                ) {
+                    onRuleChange(app.packageName, RuleCodec.DYNAMIC_STATUS_BAR, it)
+                }
+
                 HorizontalDivider()
-                RuleRow("隐藏状态栏", "扩大顶部可用空间", app.flags and 2 != 0, app.enabled) {
-                    onRuleChange(app.packageName, 2, it)
+
+                RuleRow(
+                    "隐藏状态栏",
+                    "隐藏系统状态栏",
+                    app.flags and RuleCodec.HIDE_STATUS != 0,
+                    app.fullscreenEnable && !app.dynamicStatusEnable
+                ) {
+                    onRuleChange(app.packageName, RuleCodec.HIDE_STATUS, it)
                 }
                 RuleRow("隐藏导航栏", "可通过边缘手势临时呼出", app.flags and 4 != 0, app.enabled) {
                     onRuleChange(app.packageName, 4, it)
