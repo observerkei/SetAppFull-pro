@@ -11,7 +11,7 @@ public final class DynamicStatusBarLog {
     private static final String TAG = "SetAppFull-Dynamic";
 
     /** 日志总开关，默认开启。 */
-    public static volatile boolean ENABLED = false;
+    public static volatile boolean ENABLED = true;
 
     private DynamicStatusBarLog() {
     }

@@ -85,136 +85,233 @@ public final class DynamicStatusBarController {
         }
     }
 
-
     private void updateGesture(
             Activity activity,
             State state,
             float currentY) {
+        float offset = 0;
+        int touchSlop = ViewConfiguration.get(activity).getScaledTouchSlop();
 
-        float deltaY = currentY - state.startY;
-
-        int touchSlop =
-                ViewConfiguration.get(activity).getScaledTouchSlop();
-
-        if (!state.gestureActive) {
-            if (Math.abs(deltaY) <= touchSlop) return;
-
-            boolean targetVisible = deltaY > 0;
-
-            // Ignore gestures that do not change the current bar state.
-            if (targetVisible == state.statusBarVisible) return;
+        // first in
+        // init gesture
+        if (Float.isNaN(state.gesture.startY)) {
+//            float deltaY = currentY - state.startY;
+//            if (Math.abs(deltaY) <= touchSlop) return;
 
             Window window = activity.getWindow();
             if (window == null) return;
 
             View decor = window.getDecorView();
-            View contentRoot = activity.findViewById(android.R.id.content);
             WindowInsets insets = decor.getRootWindowInsets();
+            state.statusBarsHeight = insets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top;
 
-            if (contentRoot == null || insets == null) return;
-
-            int height = insets.getInsetsIgnoringVisibility(
-                    WindowInsets.Type.statusBars()).top;
-
-            if (height <= 0) {
-                DynamicStatusBarLog.d(
-                        "Gesture ignored: status bar height unavailable");
-                return;
+            if (state.statusBarVisible) {
+                state.gesture.lowerYHideAllStatusBar = currentY - state.statusBarsHeight;
+                state.gesture.highYShowALLStatusBar = currentY;
+                offset = state.statusBarsHeight;
+            } else {
+                state.gesture.lowerYHideAllStatusBar = currentY;
+                state.gesture.highYShowALLStatusBar = currentY + state.statusBarsHeight;
+                offset = 0;
             }
-
-            float initialOffset = targetVisible ? 0f : height;
-
+            View contentRoot = activity.findViewById(android.R.id.content);
             if (!gestureAnimator.prepare(
-                    activity, contentRoot, height, initialOffset)) {
+                    activity, contentRoot, state.statusBarsHeight,
+                    state.statusBarsHeight - offset)) {
                 return;
             }
-
-            state.gestureActive = true;
-            state.gestureTargetVisible = targetVisible;
-            state.gestureHeight = height;
-
-            if (!targetVisible) {
-                // Preserve the content position before hiding the system bar.
-                setStatusBarVisible(activity, false);
-                state.statusBarVisible = false;
-            }
-
-            DynamicStatusBarLog.d(
-                    targetVisible
-                            ? "Down gesture started"
-                            : "Up gesture started");
+            state.gesture.startY = currentY;
+            DynamicStatusBarLog.d("updateGesture:: data init, statusBarsHeight: " + state.statusBarsHeight);
         }
 
-        float distance = Math.abs(deltaY) - touchSlop;
-        distance = Math.max(0f, distance);
-
-        float offset = state.gestureTargetVisible
-                ? distance
-                : state.gestureHeight - distance;
-
+        if (currentY < state.gesture.lowerYHideAllStatusBar) {
+            if (!state.statusBarVisible) {
+                return;
+            }
+            // TODO Hide Status bar
+            offset = state.statusBarsHeight;
+            state.statusBarVisible = false;
+            setStatusBarVisible(activity, false);
+            DynamicStatusBarLog.d("updateGesture:: <= top, Hide StatusBar");
+            gestureAnimator.setOffset(activity, offset);
+        } else if (currentY >= state.gesture.highYShowALLStatusBar + touchSlop) {
+            if (state.statusBarVisible) {
+                return;
+            }
+            // TODO Show Status bar
+            offset = 0;
+            state.statusBarVisible = true;
+            setStatusBarVisible(activity, true);
+            DynamicStatusBarLog.d("updateGesture:: >= low, Show StatusBar");
+        } else {
+            // TODO Hide Status bar
+            offset = currentY - state.gesture.lowerYHideAllStatusBar;
+            offset = Math.max(0, Math.min(offset, state.statusBarsHeight));
+            if (state.statusBarVisible) {
+                state.statusBarVisible = false;
+                setStatusBarVisible(activity, false);
+                DynamicStatusBarLog.d("updateGesture:: move activity, hide StatusBar");
+            }
+            gestureAnimator.setOffset(activity, offset);
+        }
         gestureAnimator.setOffset(activity, offset);
 
-        // Hand over to the system status bar as soon as the
-        // manually expanded area reaches the full status bar height.
-        if (state.gestureTargetVisible
-                && distance >= state.gestureHeight) {
-            DynamicStatusBarLog.d(
-                    "Status bar handoff threshold reached");
-
-            finishGesture(activity, state);
-        }
+        DynamicStatusBarLog.d(
+                "updateGesture:: currentY: " + currentY
+                + ", offset: " + offset
+                + ", highY: " + state.gesture.highYShowALLStatusBar
+                + ", lowerY: " + state.gesture.lowerYHideAllStatusBar
+                + ", touchSlop: " + touchSlop
+                + ", statusBarVisible: " + state.statusBarVisible
+        );
     }
 
-    private void finishGesture(Activity activity, State state) {
-        if (!state.gestureActive) return;
 
-        boolean targetVisible = state.gestureTargetVisible;
-        int height = state.gestureHeight;
+//    private void updateGesture(
+//            Activity activity,
+//            State state,
+//            float currentY) {
+//
+//        float deltaY = currentY - state.startY;
+//
+//        int touchSlop =
+//                ViewConfiguration.get(activity).getScaledTouchSlop();
+//
+//        if (!state.gestureActive) {
+//            if (Math.abs(deltaY) <= touchSlop) return;
+//
+//            boolean targetVisible = deltaY > 0;
+//
+//            // Ignore gestures that do not change the current bar state.
+//            if (targetVisible == state.statusBarVisible) return;
+//
+//            Window window = activity.getWindow();
+//            if (window == null) return;
+//
+//            View decor = window.getDecorView();
+//            View contentRoot = activity.findViewById(android.R.id.content);
+//            WindowInsets insets = decor.getRootWindowInsets();
+//
+//            if (contentRoot == null || insets == null) return;
+//
+//            int height = insets.getInsetsIgnoringVisibility(
+//                    WindowInsets.Type.statusBars()).top;
+//
+//            if (height <= 0) {
+//                DynamicStatusBarLog.d(
+//                        "Gesture ignored: status bar height unavailable");
+//                return;
+//            }
+//
+//            float initialOffset = targetVisible ? 0f : height;
+//
+//            if (!gestureAnimator.prepare(
+//                    activity, contentRoot, height, initialOffset)) {
+//                return;
+//            }
+//
+//            state.gestureActive = true;
+//            state.gestureTargetVisible = targetVisible;
+//            state.gestureHeight = height;
+//
+//            if (!targetVisible) {
+//                // Preserve the content position before hiding the system bar.
+//                setStatusBarVisible(activity, false);
+//                state.statusBarVisible = false;
+//            }
+//
+//            DynamicStatusBarLog.d(
+//                    targetVisible
+//                            ? "Down gesture started"
+//                            : "Up gesture started");
+//        }
+//
+//        float distance = Math.abs(deltaY) - touchSlop;
+//        distance = Math.max(0f, distance);
+//
+//        float offset = state.gestureTargetVisible
+//                ? distance
+//                : state.gestureHeight - distance;
+//
+//        gestureAnimator.setOffset(activity, offset);
+//
+//        // Hand over to the system status bar as soon as the
+//        // manually expanded area reaches the full status bar height.
+//        if (state.gestureTargetVisible
+//                && distance >= state.gestureHeight) {
+//            DynamicStatusBarLog.d(
+//                    "Status bar handoff threshold reached");
+//
+//            // finishGesture(activity, state);
+//            gestureAnimator.clear(activity);
+//        }
+//    }
+private void finishGesture(Activity activity, State state) {
+    if (Float.isNaN(state.gesture.startY)) return;
 
-        state.gestureActive = false;
-        state.gestureHeight = 0;
+    int height = state.statusBarVisible ? state.statusBarsHeight : 0;
 
-        if (targetVisible) {
-            gestureAnimator.animateTo(
-                    activity,
-                    height,
-                    180L,
-                    () -> {
-                        if (!isValidActivity(activity) || !state.enabled) {
-                            gestureAnimator.clear(activity);
-                            return;
-                        }
+    state.gesture.lowerYHideAllStatusBar = 0;
+    state.gesture.highYShowALLStatusBar = 0;
+    gestureAnimator.clear(activity);
 
-                        setStatusBarVisible(activity, true);
-                        state.statusBarVisible = true;
-                        gestureAnimator.clear(activity);
-                    });
-        } else {
-            gestureAnimator.animateTo(
-                    activity,
-                    0f,
-                    180L,
-                    () -> gestureAnimator.clear(activity));
-        }
-    }
+    state.gesture.startY = Float.NaN;
+}
+
+//    private void finishGesture(Activity activity, State state) {
+//        if (!state.gestureActive) return;
+//
+//        boolean targetVisible = state.gestureTargetVisible;
+//        int height = state.gestureHeight;
+//
+//        state.gestureActive = false;
+//        state.gestureHeight = 0;
+//
+//        if (targetVisible) {
+//            gestureAnimator.animateTo(
+//                    activity,
+//                    height,
+//                    180L,
+//                    () -> {
+//                        if (!isValidActivity(activity) || !state.enabled) {
+//                            gestureAnimator.clear(activity);
+//                            return;
+//                        }
+//
+//                        setStatusBarVisible(activity, true);
+//                        state.statusBarVisible = true;
+//                        gestureAnimator.clear(activity);
+//                    });
+//        } else {
+//            gestureAnimator.animateTo(
+//                    activity,
+//                    0f,
+//                    180L,
+//                    () -> gestureAnimator.clear(activity));
+//        }
+//    }
 
     private void abortGesture(Activity activity, State state) {
-        state.startY = Float.NaN;
+        state.gesture.startY = Float.NaN;
+        state.gesture.highYShowALLStatusBar = 0;
+        state.gesture.lowerYHideAllStatusBar = 0;
 
-        if (!state.gestureActive) {
-            gestureAnimator.clear(activity);
-            return;
-        }
-
-        // An upward gesture hides a bar that was originally visible.
-        if (!state.gestureTargetVisible && state.enabled) {
-            setStatusBarVisible(activity, true);
-            state.statusBarVisible = true;
-        }
-
-        state.gestureActive = false;
-        state.gestureHeight = 0;
-
+//        state.startY = Float.NaN;
+//
+//        if (!state.gestureActive) {
+//            gestureAnimator.clear(activity);
+//            return;
+//        }
+//
+//        // An upward gesture hides a bar that was originally visible.
+//        if (!state.gestureTargetVisible && state.enabled) {
+//            setStatusBarVisible(activity, true);
+//            state.statusBarVisible = true;
+//        }
+//
+//        state.gestureActive = false;
+//        state.gestureHeight = 0;
+//
         gestureAnimator.clear(activity);
         DynamicStatusBarLog.d("Gesture aborted");
     }
@@ -255,11 +352,7 @@ public final class DynamicStatusBarController {
                 updateGesture(activity, state, event.getRawY());
                 state.startY = Float.NaN;
 
-                if (state.gestureActive) {
-                    finishGesture(activity, state);
-                } else {
-                    state.startY = Float.NaN;
-                }
+                finishGesture(activity, state);
                 break;
 
             case MotionEvent.ACTION_CANCEL:
@@ -376,7 +469,7 @@ public final class DynamicStatusBarController {
         if (enabled) {
             state.statusBarVisible = true;
             setStatusBarVisible(activity, true);
-        }
+            DynamicStatusBarLog.d("syncEnabled:: enable Dynamic cfg, Show StatusBar");        }
     }
 
     /**
@@ -416,18 +509,34 @@ public final class DynamicStatusBarController {
                 && !activity.isDestroyed();
     }
 
+
+    private static final class GestureState {
+        float startY = Float.NaN;
+        float lowerYHideAllStatusBar = 0;
+        float highYShowALLStatusBar = 0;
+    }
+
     private static final class State {
         boolean enabled;
 
-        // Current status bar state managed by this controller.
+        // Current status bar state managed by this controller
         boolean statusBarVisible = true;
+
+        int statusBarsHeight;
 
         // Gesture tracking.
         float startY = Float.NaN;
+
+
+        // Gesture state.
+        final GestureState gesture = new GestureState();
+
         boolean gestureActive;
         boolean gestureTargetVisible;
         int gestureHeight;
+        boolean gestureHeightHideAll;
 
+        boolean gestureHeightShowAll;
         int popupCount;
     }
 }
