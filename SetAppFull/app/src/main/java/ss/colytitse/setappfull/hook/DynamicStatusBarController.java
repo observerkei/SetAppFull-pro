@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -19,6 +20,7 @@ import java.util.WeakHashMap;
 
 import ss.colytitse.setappfull.core.RuleCodec;
 import ss.colytitse.setappfull.core.DynamicStatusBarLog;
+import ss.colytitse.setappfull.ui.StatusBarGestureAnimator;
 
 
 /**
@@ -31,6 +33,9 @@ import ss.colytitse.setappfull.core.DynamicStatusBarLog;
 public final class DynamicStatusBarController {
 
     private final FullscreenModule module;
+
+    private final StatusBarGestureAnimator gestureAnimator =
+            new StatusBarGestureAnimator();
 
     /** Activity 使用弱引用键，避免控制器延长 Activity 生命周期。 */
     private final Map<Activity, State> states = new WeakHashMap<>();
@@ -58,9 +63,9 @@ public final class DynamicStatusBarController {
     public void onActivityDestroyed(Activity activity) {
         if (activity == null) return;
 
+        gestureAnimator.clear(activity);
         states.remove(activity);
 
-        // 清除属于该 Activity 的所有弹窗，防止弹窗计数残留。
         popups.values().removeIf(owner -> owner == activity);
 
         DynamicStatusBarLog.d("Activity state cleared");
@@ -80,6 +85,141 @@ public final class DynamicStatusBarController {
         }
     }
 
+
+    private void updateGesture(
+            Activity activity,
+            State state,
+            float currentY) {
+
+        float deltaY = currentY - state.startY;
+
+        int touchSlop =
+                ViewConfiguration.get(activity).getScaledTouchSlop();
+
+        if (!state.gestureActive) {
+            if (Math.abs(deltaY) <= touchSlop) return;
+
+            boolean targetVisible = deltaY > 0;
+
+            // Ignore gestures that do not change the current bar state.
+            if (targetVisible == state.statusBarVisible) return;
+
+            Window window = activity.getWindow();
+            if (window == null) return;
+
+            View decor = window.getDecorView();
+            View contentRoot = activity.findViewById(android.R.id.content);
+            WindowInsets insets = decor.getRootWindowInsets();
+
+            if (contentRoot == null || insets == null) return;
+
+            int height = insets.getInsetsIgnoringVisibility(
+                    WindowInsets.Type.statusBars()).top;
+
+            if (height <= 0) {
+                DynamicStatusBarLog.d(
+                        "Gesture ignored: status bar height unavailable");
+                return;
+            }
+
+            float initialOffset = targetVisible ? 0f : height;
+
+            if (!gestureAnimator.prepare(
+                    activity, contentRoot, height, initialOffset)) {
+                return;
+            }
+
+            state.gestureActive = true;
+            state.gestureTargetVisible = targetVisible;
+            state.gestureHeight = height;
+
+            if (!targetVisible) {
+                // Preserve the content position before hiding the system bar.
+                setStatusBarVisible(activity, false);
+                state.statusBarVisible = false;
+            }
+
+            DynamicStatusBarLog.d(
+                    targetVisible
+                            ? "Down gesture started"
+                            : "Up gesture started");
+        }
+
+        float distance = Math.abs(deltaY) - touchSlop;
+        distance = Math.max(0f, distance);
+
+        float offset = state.gestureTargetVisible
+                ? distance
+                : state.gestureHeight - distance;
+
+        gestureAnimator.setOffset(activity, offset);
+
+        // Hand over to the system status bar as soon as the
+        // manually expanded area reaches the full status bar height.
+        if (state.gestureTargetVisible
+                && distance >= state.gestureHeight) {
+            DynamicStatusBarLog.d(
+                    "Status bar handoff threshold reached");
+
+            finishGesture(activity, state);
+        }
+    }
+
+    private void finishGesture(Activity activity, State state) {
+        if (!state.gestureActive) return;
+
+        boolean targetVisible = state.gestureTargetVisible;
+        int height = state.gestureHeight;
+
+        state.gestureActive = false;
+        state.gestureHeight = 0;
+
+        if (targetVisible) {
+            gestureAnimator.animateTo(
+                    activity,
+                    height,
+                    180L,
+                    () -> {
+                        if (!isValidActivity(activity) || !state.enabled) {
+                            gestureAnimator.clear(activity);
+                            return;
+                        }
+
+                        setStatusBarVisible(activity, true);
+                        state.statusBarVisible = true;
+                        gestureAnimator.clear(activity);
+                    });
+        } else {
+            gestureAnimator.animateTo(
+                    activity,
+                    0f,
+                    180L,
+                    () -> gestureAnimator.clear(activity));
+        }
+    }
+
+    private void abortGesture(Activity activity, State state) {
+        state.startY = Float.NaN;
+
+        if (!state.gestureActive) {
+            gestureAnimator.clear(activity);
+            return;
+        }
+
+        // An upward gesture hides a bar that was originally visible.
+        if (!state.gestureTargetVisible && state.enabled) {
+            setStatusBarVisible(activity, true);
+            state.statusBarVisible = true;
+        }
+
+        state.gestureActive = false;
+        state.gestureHeight = 0;
+
+        gestureAnimator.clear(activity);
+        DynamicStatusBarLog.d("Gesture aborted");
+    }
+
+
     /**
      * 观察 Activity 的触摸事件。
      *
@@ -93,41 +233,37 @@ public final class DynamicStatusBarController {
         State state = states.computeIfAbsent(activity, key -> new State());
         syncEnabled(activity, state);
 
-        // 动态模式关闭或弹窗存在时，不识别页面手势。
         if (!state.enabled || state.popupCount > 0) {
-            state.startY = Float.NaN;
+            abortGesture(activity, state);
             return;
         }
 
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                abortGesture(activity, state);
                 state.startY = event.getRawY();
+                break;
+
+            case MotionEvent.ACTION_MOVE:
+                if (Float.isNaN(state.startY)) return;
+                updateGesture(activity, state, event.getRawY());
                 break;
 
             case MotionEvent.ACTION_UP:
                 if (Float.isNaN(state.startY)) return;
 
-                float deltaY = event.getRawY() - state.startY;
+                updateGesture(activity, state, event.getRawY());
                 state.startY = Float.NaN;
 
-                // 使用系统最小触摸距离过滤点击和轻微抖动。
-                int touchSlop =
-                        ViewConfiguration.get(activity).getScaledTouchSlop();
-
-                if (Math.abs(deltaY) <= touchSlop) return;
-
-                boolean visible = deltaY > 0;
-
-                DynamicStatusBarLog.d(
-                        visible ? "Swipe down: show status bar"
-                                : "Swipe up: hide status bar"
-                );
-
-                setStatusBarVisible(activity, visible);
+                if (state.gestureActive) {
+                    finishGesture(activity, state);
+                } else {
+                    state.startY = Float.NaN;
+                }
                 break;
 
             case MotionEvent.ACTION_CANCEL:
-                state.startY = Float.NaN;
+                abortGesture(activity, state);
                 break;
 
             default:
@@ -158,6 +294,9 @@ public final class DynamicStatusBarController {
         popups.put(token, activity);
 
         State state = states.computeIfAbsent(activity, key -> new State());
+
+        abortGesture(activity, state);
+
         state.popupCount++;
         state.startY = Float.NaN;
 
@@ -223,12 +362,19 @@ public final class DynamicStatusBarController {
         state.enabled = enabled;
         state.startY = Float.NaN;
 
+        if (!enabled) {
+            state.gestureActive = false;
+            state.gestureHeight = 0;
+            gestureAnimator.clear(activity);
+        }
+
         DynamicStatusBarLog.i(
                 enabled ? "Dynamic status bar enabled"
                         : "Dynamic status bar disabled"
         );
 
         if (enabled) {
+            state.statusBarVisible = true;
             setStatusBarVisible(activity, true);
         }
     }
@@ -272,7 +418,16 @@ public final class DynamicStatusBarController {
 
     private static final class State {
         boolean enabled;
+
+        // Current status bar state managed by this controller.
+        boolean statusBarVisible = true;
+
+        // Gesture tracking.
         float startY = Float.NaN;
+        boolean gestureActive;
+        boolean gestureTargetVisible;
+        int gestureHeight;
+
         int popupCount;
     }
 }

@@ -16,7 +16,6 @@ android {
         versionCode = 1
         versionName = "1.0"
     }
-    signingConfigs.getByName("debug") { storeFile = file("$workspaceRoot/signing/debug.keystore") }
     buildFeatures { compose = true }
     buildTypes { debug { isMinifyEnabled = false } }
     compileOptions {

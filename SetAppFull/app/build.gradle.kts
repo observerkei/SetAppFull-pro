@@ -57,7 +57,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
-        getByName("debug") { storeFile = file("$workspaceRoot/signing/debug.keystore") }
         if (releasePropertiesFile.isFile) {
             create("release") {
                 storeFile = file(releaseProperties.getProperty("storeFile"))
