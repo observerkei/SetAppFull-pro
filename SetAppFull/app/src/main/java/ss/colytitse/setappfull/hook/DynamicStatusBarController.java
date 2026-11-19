@@ -4,6 +4,8 @@ package ss.colytitse.setappfull.hook;
 import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -92,18 +94,19 @@ public final class DynamicStatusBarController {
         float offset = 0;
         int touchSlop = ViewConfiguration.get(activity).getScaledTouchSlop();
 
-        // first in
-        // init gesture
         if (Float.isNaN(state.gesture.startY)) {
-//            float deltaY = currentY - state.startY;
-//            if (Math.abs(deltaY) <= touchSlop) return;
+            float deltaY = currentY - state.startY;
+            if (Math.abs(deltaY) <= touchSlop) return;
 
             Window window = activity.getWindow();
             if (window == null) return;
 
             View decor = window.getDecorView();
             WindowInsets insets = decor.getRootWindowInsets();
-            state.statusBarsHeight = insets.getInsetsIgnoringVisibility(WindowInsets.Type.statusBars()).top;
+            if (insets == null) return;
+
+            state.statusBarsHeight = insets.getInsetsIgnoringVisibility(
+                    WindowInsets.Type.statusBars()).top;
 
             if (state.statusBarVisible) {
                 state.gesture.lowerYHideAllStatusBar = currentY - state.statusBarsHeight;
@@ -114,6 +117,10 @@ public final class DynamicStatusBarController {
                 state.gesture.highYShowALLStatusBar = currentY + state.statusBarsHeight;
                 offset = 0;
             }
+            DynamicStatusBarLog.d("updateGesture:: data init"
+                    + ", offset: " + offset
+                    + ", statusBarsHeight: " + state.statusBarsHeight);
+
             View contentRoot = activity.findViewById(android.R.id.content);
             if (!gestureAnimator.prepare(
                     activity, contentRoot, state.statusBarsHeight,
@@ -121,38 +128,35 @@ public final class DynamicStatusBarController {
                 return;
             }
             state.gesture.startY = currentY;
-            DynamicStatusBarLog.d("updateGesture:: data init, statusBarsHeight: " + state.statusBarsHeight);
         }
 
         if (currentY < state.gesture.lowerYHideAllStatusBar) {
             if (!state.statusBarVisible) {
                 return;
             }
-            // TODO Hide Status bar
+            // Hide Status bar
+            DynamicStatusBarLog.d("updateGesture:: <= top, Hide StatusBar");
             offset = state.statusBarsHeight;
             state.statusBarVisible = false;
             setStatusBarVisible(activity, false);
-            DynamicStatusBarLog.d("updateGesture:: <= top, Hide StatusBar");
-            gestureAnimator.setOffset(activity, offset);
-        } else if (currentY >= state.gesture.highYShowALLStatusBar + touchSlop) {
+        } else if (currentY >= state.gesture.highYShowALLStatusBar) {
             if (state.statusBarVisible) {
                 return;
             }
-            // TODO Show Status bar
+            // Show Status bar
+            DynamicStatusBarLog.d("updateGesture:: >= low, Show StatusBar");
             offset = 0;
             state.statusBarVisible = true;
             setStatusBarVisible(activity, true);
-            DynamicStatusBarLog.d("updateGesture:: >= low, Show StatusBar");
         } else {
-            // TODO Hide Status bar
-            offset = currentY - state.gesture.lowerYHideAllStatusBar;
-            offset = Math.max(0, Math.min(offset, state.statusBarsHeight));
+            // Hide Status bar
+            offset = Math.max(-state.statusBarsHeight, Math.min(state.statusBarsHeight,
+                    currentY - state.gesture.lowerYHideAllStatusBar));
             if (state.statusBarVisible) {
+                DynamicStatusBarLog.d("updateGesture:: move activity, hide StatusBar");
                 state.statusBarVisible = false;
                 setStatusBarVisible(activity, false);
-                DynamicStatusBarLog.d("updateGesture:: move activity, hide StatusBar");
             }
-            gestureAnimator.setOffset(activity, offset);
         }
         gestureAnimator.setOffset(activity, offset);
 
@@ -161,6 +165,8 @@ public final class DynamicStatusBarController {
                 + ", offset: " + offset
                 + ", highY: " + state.gesture.highYShowALLStatusBar
                 + ", lowerY: " + state.gesture.lowerYHideAllStatusBar
+                + ", hisstartY: " + state.startY
+                + ", gesture.startY: " + state.gesture.startY
                 + ", touchSlop: " + touchSlop
                 + ", statusBarVisible: " + state.statusBarVisible
         );
@@ -249,11 +255,16 @@ public final class DynamicStatusBarController {
 private void finishGesture(Activity activity, State state) {
     if (Float.isNaN(state.gesture.startY)) return;
 
-    int height = state.statusBarVisible ? state.statusBarsHeight : 0;
+//    int height = state.statusBarVisible ? state.statusBarsHeight : 0;
 
     state.gesture.lowerYHideAllStatusBar = 0;
     state.gesture.highYShowALLStatusBar = 0;
-    gestureAnimator.clear(activity);
+
+    gestureAnimator.animateTo(
+                    activity,
+                    0,
+                    50L,
+                    () -> gestureAnimator.clear(activity));
 
     state.gesture.startY = Float.NaN;
 }
@@ -330,6 +341,9 @@ private void finishGesture(Activity activity, State state) {
         State state = states.computeIfAbsent(activity, key -> new State());
         syncEnabled(activity, state);
 
+
+        DynamicStatusBarLog.d("MotionEvent: " + event.getActionMasked());
+
         if (!state.enabled || state.popupCount > 0) {
             abortGesture(activity, state);
             return;
@@ -352,7 +366,9 @@ private void finishGesture(Activity activity, State state) {
                 updateGesture(activity, state, event.getRawY());
                 state.startY = Float.NaN;
 
-                finishGesture(activity, state);
+                if (!Float.isNaN(state.gesture.startY)) {
+                    gestureAnimator.clear(activity);
+                }
                 break;
 
             case MotionEvent.ACTION_CANCEL:
@@ -456,8 +472,8 @@ private void finishGesture(Activity activity, State state) {
         state.startY = Float.NaN;
 
         if (!enabled) {
-            state.gestureActive = false;
-            state.gestureHeight = 0;
+//            state.gestureActive = false;
+//            state.gestureHeight = 0;
             gestureAnimator.clear(activity);
         }
 
@@ -489,15 +505,15 @@ private void finishGesture(Activity activity, State state) {
         }
 
         try {
+            DynamicStatusBarLog.d(
+                    visible ? "Status bar shown" : "Status bar hidden"
+            );
+
             if (visible) {
                 controller.show(WindowInsets.Type.statusBars());
             } else {
                 controller.hide(WindowInsets.Type.statusBars());
             }
-
-            DynamicStatusBarLog.d(
-                    visible ? "Status bar shown" : "Status bar hidden"
-            );
         } catch (RuntimeException error) {
             DynamicStatusBarLog.w("Status bar operation failed", error);
         }
@@ -531,12 +547,12 @@ private void finishGesture(Activity activity, State state) {
         // Gesture state.
         final GestureState gesture = new GestureState();
 
-        boolean gestureActive;
-        boolean gestureTargetVisible;
-        int gestureHeight;
-        boolean gestureHeightHideAll;
-
-        boolean gestureHeightShowAll;
+//        boolean gestureActive;
+//        boolean gestureTargetVisible;
+//        int gestureHeight;
+//        boolean gestureHeightHideAll;
+//
+//        boolean gestureHeightShowAll;
         int popupCount;
     }
 }

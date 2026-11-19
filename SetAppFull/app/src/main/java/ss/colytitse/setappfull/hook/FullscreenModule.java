@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.ContextWrapper;
 import android.app.Instrumentation;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
 import android.os.Build;
@@ -13,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.view.View;
@@ -34,6 +36,8 @@ import ss.colytitse.setappfull.core.RuleCodec;
 import ss.colytitse.setappfull.core.NetworkEnvironmentCompatibility;
 import android.view.MotionEvent;
 import android.widget.PopupWindow;
+
+import androidx.core.view.WindowCompat;
 
 
 /** API 101 baseline; API 102 runs the same public API without opting into hot reload. */
@@ -106,6 +110,7 @@ public final class FullscreenModule extends XposedModule {
             Object result = chain.proceed();
             Activity activity = (Activity) chain.getArg(0);
             onMain(() -> resume(activity));
+
             return result;
         });
         installHook(Instrumentation.class, "callActivityOnDestroy", new Class<?>[]{Activity.class}, chain -> {

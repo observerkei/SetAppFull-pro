@@ -5,8 +5,13 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Looper;
+import android.util.TypedValue;
 import android.view.View;
+import android.view.Window;
 import android.view.animation.DecelerateInterpolator;
 
 import java.lang.ref.WeakReference;
@@ -56,12 +61,17 @@ public final class StatusBarGestureAnimator {
         AnimationState state = new AnimationState(
                 contentRoot,
                 statusBarHeight,
-                contentRoot.getTranslationY());
+                0);
+        Drawable background = contentRoot.getBackground();
+        activity.getWindow().setBackgroundDrawable(background);
 
         states.put(activity, state);
         setOffsetInternal(state, initialOffset);
 
-        DynamicStatusBarLog.d("Gesture animation prepared");
+        DynamicStatusBarLog.d("Gesture animation prepared"
+                + ", contentRoot.getTranslationY(): " + contentRoot.getTranslationY()
+
+        );
         return true;
     }
 
