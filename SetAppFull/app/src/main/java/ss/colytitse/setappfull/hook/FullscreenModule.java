@@ -608,7 +608,7 @@ public final class FullscreenModule extends XposedModule {
     }
 
     void reportBilibiliAdapter() {
-        log(Log.INFO, TAG, "Bilibili Story adapter registered (2.0.7)");
-        Log.i(TAG, "Bilibili Story adapter registered (2.0.7)");
+        log(Log.INFO, TAG, "Bilibili Story adapter registered (2.0.8)");
+        Log.i(TAG, "Bilibili Story adapter registered (2.0.8)");
     }
 }
